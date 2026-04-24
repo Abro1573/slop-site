@@ -1,14 +1,287 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Archer's Site</title>
-</head>
-<body>
-  <h1>yo i made this</h1>
-  <p>This is my first website. it exists. somehow.</p>
+  <title>Aim Trainer</title>
+  <style>
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#111;
+      color:white;
+      overflow:hidden;
+      cursor:none;
+    }
 
-  <button onclick="alert('you clicked it. nice.')">
-    click me
-  </button>
+    .screen { display:none; text-align:center; padding-top:40px; }
+
+    button, input { margin:5px; padding:6px; }
+
+    .row { display:flex; justify-content:center; gap:40px; }
+
+    #topLeft { position:fixed; top:10px; left:10px; }
+    #topRight { position:fixed; top:10px; right:10px; text-align:right; }
+
+    .box {
+      position:absolute;
+      border-radius:8px;
+      cursor:pointer;
+    }
+
+    .heat {
+      position:absolute;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      background:red;
+      opacity:0.3;
+      pointer-events:none;
+    }
+
+    #crosshair {
+      position:fixed;
+      width:20px;
+      height:20px;
+      pointer-events:none;
+      z-index:999;
+    }
+
+    #crosshair::before, #crosshair::after {
+      content:"";
+      position:absolute;
+      background:white;
+    }
+
+    #crosshair::before { width:2px; height:20px; left:9px; }
+    #crosshair::after { height:2px; width:20px; top:9px; }
+  </style>
+</head>
+
+<body>
+
+<div id="crosshair"></div>
+
+<!-- INTRO -->
+<div id="intro" class="screen" style="display:block;">
+  <h1>🎯 Aim Trainer</h1>
+  <button onclick="show('menu')">Enter</button>
+</div>
+
+<!-- MENU -->
+<div id="menu" class="screen">
+
+  <h2>Settings</h2>
+
+  <!-- SLIDERS -->
+  Time: <span id="timeVal">3</span>s<br>
+  <input type="range" id="time" min="1" max="5" value="3"
+    oninput="timeVal.innerText=this.value"><br>
+
+  Size: <span id="sizeVal">25</span><br>
+  <input type="range" id="size" min="10" max="80" value="25"
+    oninput="sizeVal.innerText=this.value"><br>
+
+  Growth: <span id="growthVal">2</span><br>
+  <input type="range" id="growth" min="1" max="10" value="2"
+    oninput="growthVal.innerText=this.value"><br>
+
+  <!-- SIDE BY SIDE OPTIONS -->
+  <div class="row">
+    <div>
+      Boxes:
+      <select id="multi">
+        <option>1</option><option>2</option><option>3</option>
+      </select><br>
+
+      Colour:
+      <input type="color" id="color" value="#ff0000"><br>
+
+      Crosshair:
+      <input type="color" id="crossColor" value="#ffffff">
+    </div>
+
+    <div>
+      <label><input type="checkbox" id="move"> Moving</label><br>
+      <label><input type="checkbox" id="missEnd"> End on miss</label><br>
+      <label><input type="checkbox" id="heatToggle"> Heatmap</label><br>
+      <label><input type="checkbox" id="scoreMode"> Score mode</label><br>
+      <label><input type="checkbox" id="accuracyBonus"> Accuracy bonus</label>
+    </div>
+  </div>
+
+  <button onclick="startGame()">Start</button>
+</div>
+
+<!-- GAME -->
+<div id="game" class="screen">
+  <div id="topLeft">
+    <button onclick="show('menu')">⬅ Menu</button>
+  </div>
+
+  <div id="topRight">
+    Score: <span id="score">0</span><br>
+    Best: <span id="best">0</span><br>
+    Acc: <span id="acc">-</span>%<br>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="over" class="screen">
+  <h1>💀 Game Over</h1>
+  <p>Score: <span id="final"></span></p>
+  <button onclick="startGame()">Retry</button>
+  <button onclick="show('menu')">Menu</button>
+</div>
+
+<script>
+let settings={}, boxes=[];
+let score=0, best=0, totalAcc=0, clicks=0;
+
+let spawnTimes = new Map();
+const crosshair=document.getElementById("crosshair");
+
+document.addEventListener("mousemove", e=>{
+  crosshair.style.left=e.clientX-10+"px";
+  crosshair.style.top=e.clientY-10+"px";
+});
+
+function show(id){
+  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="block";
+}
+
+function startGame(){
+  settings={
+    time:time.value*1000,
+    size:+size.value,
+    growth:+growth.value,
+    multi:+multi.value,
+    color:color.value,
+    crossColor:crossColor.value,
+    move:move.checked,
+    missEnd:missEnd.checked,
+    heat:heatToggle.checked,
+    scoreMode:scoreMode.checked,
+    accuracyBonus:accuracyBonus.checked
+  };
+
+  crosshair.style.filter=`drop-shadow(0 0 4px ${settings.crossColor})`;
+
+  score=0; totalAcc=0; clicks=0;
+  show("game");
+  spawnAll();
+}
+
+function spawnAll(){
+  clearBoxes();
+  for(let i=0;i<settings.multi;i++) spawnBox();
+}
+
+function spawnBox(){
+  let box=document.createElement("div");
+  box.className="box";
+
+  let size=settings.size;
+  box.style.width=size+"px";
+  box.style.height=size+"px";
+  box.style.background=settings.color;
+
+  let x=Math.random()*(window.innerWidth-200)+100;
+  let y=Math.random()*(window.innerHeight-200)+100;
+
+  box.style.left=x+"px";
+  box.style.top=y+"px";
+
+  document.body.appendChild(box);
+  boxes.push(box);
+
+  spawnTimes.set(box, Date.now());
+
+  let grow=setInterval(()=>{
+    size+=settings.growth;
+    box.style.width=size+"px";
+    box.style.height=size+"px";
+  },50);
+
+  let moveInt;
+  if(settings.move){
+    moveInt=setInterval(()=>{
+      x += (Math.random()-0.5)*40;
+      y += (Math.random()-0.5)*40;
+      box.style.left=x+"px";
+      box.style.top=y+"px";
+    },200);
+  }
+
+  let timeout=setTimeout(()=>{
+    clearInterval(grow);
+    clearInterval(moveInt);
+
+    // 🔥 KEY FIX: ANY missed box ends game
+    gameOver();
+
+  },settings.time);
+
+  box.onclick=(e)=>{
+    clearInterval(grow);
+    clearInterval(moveInt);
+    clearTimeout(timeout);
+
+    let reaction=Date.now()-spawnTimes.get(box);
+
+    let rect=box.getBoundingClientRect();
+    let cx=rect.left+rect.width/2;
+    let cy=rect.top+rect.height/2;
+    let dist=Math.hypot(e.clientX-cx,e.clientY-cy);
+    let acc=Math.max(0,1-dist/(rect.width/2));
+
+    totalAcc+=acc;
+    clicks++;
+
+    if(settings.scoreMode){
+      let base=settings.time-reaction;
+      score+=Math.max(0,Math.floor(base/10));
+      if(settings.accuracyBonus){
+        score+=Math.floor(acc*100)-50;
+      }
+    } else score++;
+
+    if(settings.heat) heat(e.clientX,e.clientY);
+
+    respawn(box);
+    updateUI();
+  };
+}
+
+function respawn(box){
+  box.remove();
+  spawnBox();
+}
+
+function clearBoxes(){
+  boxes.forEach(b=>b.remove());
+  boxes=[];
+}
+
+function updateUI(){
+  scoreEl.innerText=score;
+  bestEl.innerText=best;
+  accEl.innerText = clicks ? (totalAcc/clicks*100).toFixed(1) : "-";
+}
+
+function heat(x,y){
+  let h=document.createElement("div");
+  h.className="heat";
+  h.style.left=x+"px";
+  h.style.top=y+"px";
+  document.body.appendChild(h);
+}
+
+function gameOver(){
+  clearBoxes();
+  document.getElementById("final").innerText=score;
+  show("over");
+}
+</script>
+
 </body>
 </html>
